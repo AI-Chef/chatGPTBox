@@ -31,7 +31,7 @@ export default class PoeAiClient {
       await this.getCredentials()
     }
     if (!this.bot) {
-      await this.initBot(model || 'sage')
+      await this.initBot(model || 'Assistant')
     }
     if (!this.chatId) {
       await this.getChatId(this.bot)
@@ -131,7 +131,7 @@ export default class PoeAiClient {
   }
 
   async initBot(bot) {
-    if (bot === 'sage') {
+    if (bot === 'Assistant') {
       bot = 'capybara'
     } else if (bot === 'gpt-4') {
       bot = 'beaver'
@@ -149,6 +149,12 @@ export default class PoeAiClient {
       bot = 'agouti'
     } else if (bot === 'Google-PaLM') {
       bot = 'acouchy'
+    } else if (bot === 'Llama-2-7b') {
+      bot = 'llama_2_7b_chat'
+    } else if (bot === 'Llama-2-13b') {
+      bot = 'llama_2_13b_chat'
+    } else if (bot === 'Llama-2-70b') {
+      bot = 'llama_2_70b_chat'
     }
 
     this.bot = bot

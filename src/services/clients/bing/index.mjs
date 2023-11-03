@@ -1,7 +1,8 @@
 // https://github.com/waylaidwanderer/node-chatgpt-api
 
 import { v4 as uuidv4 } from 'uuid'
-import BingImageCreator from './BingImageCreator'
+// import BingImageCreator from './BingImageCreator'
+import { fetchBg } from '../../../utils/fetch-bg.mjs'
 
 /**
  * https://stackoverflow.com/a/58326357
@@ -38,9 +39,9 @@ export default class BingAIClient {
       }
     }
     this.debug = this.options.debug
-    if (this.options.features.genImage) {
-      this.bic = new BingImageCreator(this.options)
-    }
+    // if (this.options.features.genImage) {
+    //   this.bic = new BingImageCreator(this.options)
+    // }
   }
 
   static getValidIPv4(ip) {
@@ -71,67 +72,80 @@ export default class BingAIClient {
   }
 
   async createNewConversation() {
+    this.headers = {
+      accept: 'application/json',
+      'accept-language': 'en-US,en;q=0.9',
+      'content-type': 'application/json',
+      'sec-ch-ua': '"Microsoft Edge";v="113", "Chromium";v="113", "Not-A.Brand";v="24"',
+      'sec-ch-ua-arch': '"x86"',
+      'sec-ch-ua-bitness': '"64"',
+      'sec-ch-ua-full-version': '"113.0.1774.50"',
+      'sec-ch-ua-full-version-list':
+        '"Microsoft Edge";v="113.0.1774.50", "Chromium";v="113.0.5672.127", "Not-A.Brand";v="24.0.0.0"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-model': '""',
+      'sec-ch-ua-platform': '"Windows"',
+      'sec-ch-ua-platform-version': '"15.0.0"',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'same-origin',
+      'sec-ms-gec': genRanHex(64).toUpperCase(),
+      'sec-ms-gec-version': '1-115.0.1866.1',
+      'x-ms-client-request-id': uuidv4(),
+      'x-ms-useragent':
+        'azsdk-js-api-client-factory/1.0.0-beta.1 core-rest-pipeline/1.10.0 OS/Win32',
+      'user-agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.50',
+      cookie:
+        this.options.cookies ||
+        (this.options.userToken ? `_U=${this.options.userToken}` : undefined),
+      Referer: 'https://www.bing.com/search?q=Bing+AI&showconv=1',
+      'Referrer-Policy': 'origin-when-cross-origin',
+      // Workaround for request being blocked due to geolocation
+      // 'x-forwarded-for': '1.1.1.1', // 1.1.1.1 seems to no longer work.
+      ...(this.options.xForwardedFor ? { 'x-forwarded-for': this.options.xForwardedFor } : {}),
+    }
+    // filter undefined values
+    this.headers = Object.fromEntries(
+      Object.entries(this.headers).filter(([, value]) => value !== undefined),
+    )
+
     const fetchOptions = {
-      headers: {
-        accept: 'application/json',
-        'accept-language': 'en-US,en;q=0.9',
-        'content-type': 'application/json',
-        'sec-ch-ua': '"Microsoft Edge";v="113", "Chromium";v="113", "Not-A.Brand";v="24"',
-        'sec-ch-ua-arch': '"x86"',
-        'sec-ch-ua-bitness': '"64"',
-        'sec-ch-ua-full-version': '"113.0.1774.50"',
-        'sec-ch-ua-full-version-list':
-          '"Microsoft Edge";v="113.0.1774.50", "Chromium";v="113.0.5672.127", "Not-A.Brand";v="24.0.0.0"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-model': '""',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-ch-ua-platform-version': '"15.0.0"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'sec-ms-gec': genRanHex(64).toUpperCase(),
-        'sec-ms-gec-version': '1-115.0.1866.1',
-        'x-ms-client-request-id': uuidv4(),
-        'x-ms-useragent':
-          'azsdk-js-api-client-factory/1.0.0-beta.1 core-rest-pipeline/1.10.0 OS/Win32',
-        'user-agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.50',
-        cookie:
-          this.options.cookies ||
-          (this.options.userToken ? `_U=${this.options.userToken}` : undefined),
-        Referer: 'https://www.bing.com/search?q=Bing+AI&showconv=1',
-        'Referrer-Policy': 'origin-when-cross-origin',
-        // Workaround for request being blocked due to geolocation
-        // 'x-forwarded-for': '1.1.1.1', // 1.1.1.1 seems to no longer work.
-        ...(this.options.xForwardedFor ? { 'x-forwarded-for': this.options.xForwardedFor } : {}),
-      },
+      headers: this.headers,
     }
-    if (this.options.proxy) {
-      // fetchOptions.dispatcher = new ProxyAgent(this.options.proxy);
-    }
-    const response = await fetch(`${this.options.host}/turing/conversation/create`, fetchOptions)
-
-    const { status, headers } = response
-    if (status === 200 && +headers.get('content-length') < 5) {
-      throw new Error('/turing/conversation/create: Your IP is blocked by BingAI.')
-    }
-
+    // if (this.options.proxy) {
+    //   fetchOptions.dispatcher = new ProxyAgent(this.options.proxy)
+    // } else {
+    //   fetchOptions.dispatcher = new Agent({ connect: { timeout: 20_000 } })
+    // }
+    const response = await fetchBg(
+      `${this.options.host}/turing/conversation/create?bundleVersion=1.864.15`,
+      fetchOptions,
+    )
+    if (response.status === 403) throw new Error('403 Forbidden')
     const body = await response.text()
     try {
-      return JSON.parse(body)
+      const res = JSON.parse(body)
+      res.encryptedConversationSignature =
+        response.headers.get('x-sydney-encryptedconversationsignature') ?? null
+      return res
     } catch (err) {
       throw new Error(`/turing/conversation/create: failed to parse response body.\n${body}`)
     }
   }
 
-  async createWebSocketConnection() {
+  async createWebSocketConnection(encryptedConversationSignature) {
     return new Promise((resolve, reject) => {
-      // let agent;
-      if (this.options.proxy) {
-        // agent = new HttpsProxyAgent(this.options.proxy);
-      }
+      // let agent
+      // if (this.options.proxy) {
+      //   agent = new HttpsProxyAgent(this.options.proxy)
+      // }
 
-      const ws = new WebSocket('wss://sydney.bing.com/sydney/ChatHub')
+      const ws = new WebSocket(
+        `wss://sydney.bing.com/sydney/ChatHub?sec_access_token=${encodeURIComponent(
+          encryptedConversationSignature,
+        )}`,
+      )
 
       ws.onerror = (err) => {
         reject(err)
@@ -198,7 +212,7 @@ export default class BingAIClient {
     let {
       jailbreakConversationId = false, // set to `true` for the first message to enable jailbreak mode
       conversationId,
-      conversationSignature,
+      encryptedConversationSignature,
       clientId,
       onProgress,
     } = opts
@@ -216,13 +230,18 @@ export default class BingAIClient {
       onProgress = () => {}
     }
 
-    if (jailbreakConversationId || !conversationSignature || !conversationId || !clientId) {
+    if (
+      jailbreakConversationId ||
+      !encryptedConversationSignature ||
+      !conversationId ||
+      !clientId
+    ) {
       const createNewConversationResponse = await this.createNewConversation()
       if (this.debug) {
         console.debug(createNewConversationResponse)
       }
       if (
-        !createNewConversationResponse.conversationSignature ||
+        !createNewConversationResponse.encryptedConversationSignature ||
         !createNewConversationResponse.conversationId ||
         !createNewConversationResponse.clientId
       ) {
@@ -237,7 +256,8 @@ export default class BingAIClient {
         )
       }
       // eslint-disable-next-line
-      ;({ conversationSignature, conversationId, clientId } = createNewConversationResponse)
+      ;({ encryptedConversationSignature, conversationId, clientId } =
+        createNewConversationResponse)
     }
 
     // Due to this jailbreak, the AI will occasionally start responding as the user. It only happens rarely (and happens with the non-jailbroken Bing too), but since we are handling conversations ourselves now, we can use this system to ignore the part of the generated message that is replying as the user.
@@ -316,7 +336,7 @@ export default class BingAIClient {
       conversation.messages.push(userMessage)
     }
 
-    const ws = await this.createWebSocketConnection()
+    const ws = await this.createWebSocketConnection(encryptedConversationSignature)
 
     ws.onerror = (error) => {
       console.error(error)
@@ -364,7 +384,7 @@ export default class BingAIClient {
               : message,
             messageType: jailbreakConversationId ? 'SearchQuery' : 'Chat',
           },
-          conversationSignature,
+          encryptedConversationSignature,
           participant: {
             id: clientId,
           },
@@ -449,6 +469,9 @@ export default class BingAIClient {
             if (!messages?.length || messages[0].author !== 'bot') {
               return
             }
+            if (messages[0].contentOrigin === 'Apology') {
+              return
+            }
             if (messages[0]?.contentType === 'IMAGE') {
               // You will never get a message of this type without 'gencontentv3' being on.
               bicIframe = this.bic
@@ -467,8 +490,8 @@ export default class BingAIClient {
               return
             }
             // get the difference between the current text and the previous text
-            const difference = updatedText.substring(replySoFar.length)
-            onProgress(difference)
+            // const difference = updatedText.substring(replySoFar.length)
+            onProgress(updatedText)
             if (updatedText.trim().endsWith(stopToken)) {
               stopTokenFound = true
               // remove stop token from updated text
@@ -598,7 +621,7 @@ export default class BingAIClient {
 
     const returnData = {
       conversationId,
-      conversationSignature,
+      encryptedConversationSignature,
       clientId,
       invocationId: invocationId + 1,
       conversationExpiryTime,

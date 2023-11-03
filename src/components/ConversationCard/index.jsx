@@ -1,21 +1,21 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
 import Browser from 'webextension-polyfill'
 import InputBox from '../InputBox'
 import ConversationItem from '../ConversationItem'
 import { createElementAtPosition, isFirefox, isMobile, isSafari } from '../../utils'
 import {
-  LinkExternalIcon,
   ArchiveIcon,
   DesktopDownloadIcon,
+  LinkExternalIcon,
   MoveToBottomIcon,
 } from '@primer/octicons-react'
-import { WindowDesktop, XLg, Pin } from 'react-bootstrap-icons'
+import { Pin, WindowDesktop, XLg } from 'react-bootstrap-icons'
 import FileSaver from 'file-saver'
 import { render } from 'preact'
 import FloatingToolbar from '../FloatingToolbar'
 import { useClampWindowSize } from '../../hooks/use-clamp-window-size'
-import { ModelMode, Models } from '../../config/index.mjs'
+import { bingWebModelKeys, getUserConfig, ModelMode, Models } from '../../config/index.mjs'
 import { useTranslation } from 'react-i18next'
 import DeleteButton from '../DeleteButton'
 import { useConfig } from '../../hooks/use-config.mjs'
@@ -23,6 +23,8 @@ import { createSession } from '../../services/local-session.mjs'
 import { v4 as uuidv4 } from 'uuid'
 import { initSession } from '../../services/init-session.mjs'
 import { findLastIndex } from 'lodash-es'
+import { generateAnswersWithBingWebApi } from '../../services/apis/bing-web.mjs'
+import { handlePortError } from '../../services/wrappers.mjs'
 
 const logo = Browser.runtime.getURL('logo.png')
 
@@ -48,6 +50,8 @@ function ConversationCard(props) {
   const windowSize = useClampWindowSize([750, 1500], [250, 1100])
   const bodyRef = useRef(null)
   const [completeDraggable, setCompleteDraggable] = useState(false)
+  // `.some` for multi mode models. e.g. bingFree4-balanced
+  const useForegroundFetch = bingWebModelKeys.some((n) => session.modelName.includes(n))
 
   /**
    * @type {[ConversationItemData[], (conversationItemData: ConversationItemData[]) => void]}
@@ -96,12 +100,12 @@ function ConversationCard(props) {
     }
   }, [conversationItemData])
 
-  useEffect(() => {
+  useEffect(async () => {
     // when the page is responsive, session may accumulate redundant data and needs to be cleared after remounting and before making a new request
     if (props.question) {
-      const newSession = initSession({ question: props.question })
+      const newSession = initSession({ ...session, question: props.question })
       setSession(newSession)
-      port.postMessage({ session: newSession })
+      await postMessage({ session: newSession })
     }
   }, [props.question]) // usually only triggered once
 
@@ -125,6 +129,114 @@ function ConversationCard(props) {
     })
   }
 
+  const portMessageListener = (msg) => {
+    if (msg.answer) {
+      updateAnswer(msg.answer, false, 'answer')
+    }
+    if (msg.session) {
+      if (msg.done) msg.session = { ...msg.session, isRetry: false }
+      setSession(msg.session)
+    }
+    if (msg.done) {
+      updateAnswer('', true, 'answer', true)
+      setIsReady(true)
+    }
+    if (msg.error) {
+      switch (msg.error) {
+        case 'UNAUTHORIZED':
+          updateAnswer(
+            `${t('UNAUTHORIZED')}<br>${t('Please login at https://chat.openai.com first')}${
+              isSafari() ? `<br>${t('Then open https://chat.openai.com/api/auth/session')}` : ''
+            }<br>${t('And refresh this page or type you question again')}` +
+              `<br><br>${t(
+                'Consider creating an api key at https://platform.openai.com/account/api-keys',
+              )}`,
+            false,
+            'error',
+          )
+          break
+        case 'CLOUDFLARE':
+          updateAnswer(
+            `${t('OpenAI Security Check Required')}<br>${
+              isSafari()
+                ? t('Please open https://chat.openai.com/api/auth/session')
+                : t('Please open https://chat.openai.com')
+            }<br>${t('And refresh this page or type you question again')}` +
+              `<br><br>${t(
+                'Consider creating an api key at https://platform.openai.com/account/api-keys',
+              )}`,
+            false,
+            'error',
+          )
+          break
+        default: {
+          let lastItem
+          if (conversationItemData.length > 0)
+            lastItem = conversationItemData[conversationItemData.length - 1]
+          if (lastItem && (lastItem.content.includes('gpt-loading') || lastItem.type === 'error'))
+            updateAnswer(t(msg.error), false, 'error')
+          else
+            setConversationItemData([
+              ...conversationItemData,
+              new ConversationItemData('error', t(msg.error)),
+            ])
+          break
+        }
+      }
+      setIsReady(true)
+    }
+  }
+
+  const foregroundMessageListeners = useRef([])
+
+  /**
+   * @param {Session|undefined} session
+   * @param {boolean|undefined} stop
+   */
+  const postMessage = async ({ session, stop }) => {
+    if (useForegroundFetch) {
+      foregroundMessageListeners.current.forEach((listener) => listener({ session, stop }))
+      if (session) {
+        const fakePort = {
+          postMessage: (msg) => {
+            portMessageListener(msg)
+          },
+          onMessage: {
+            addListener: (listener) => {
+              foregroundMessageListeners.current.push(listener)
+            },
+            removeListener: (listener) => {
+              foregroundMessageListeners.current.splice(
+                foregroundMessageListeners.current.indexOf(listener),
+                1,
+              )
+            },
+          },
+          onDisconnect: {
+            addListener: () => {},
+            removeListener: () => {},
+          },
+        }
+        try {
+          const bingToken = (await getUserConfig()).bingAccessToken
+          if (session.modelName.includes('bingFreeSydney'))
+            await generateAnswersWithBingWebApi(
+              fakePort,
+              session.question,
+              session,
+              bingToken,
+              true,
+            )
+          else await generateAnswersWithBingWebApi(fakePort, session.question, session, bingToken)
+        } catch (err) {
+          handlePortError(session, fakePort, err)
+        }
+      }
+    } else {
+      port.postMessage({ session, stop })
+    }
+  }
+
   useEffect(() => {
     const portListener = () => {
       setPort(Browser.runtime.connect())
@@ -146,68 +258,17 @@ function ConversationCard(props) {
     }
   }, [port])
   useEffect(() => {
-    const listener = (msg) => {
-      if (msg.answer) {
-        updateAnswer(msg.answer, false, 'answer')
+    if (useForegroundFetch) {
+      return () => {}
+    } else {
+      port.onMessage.addListener(portMessageListener)
+      return () => {
+        port.onMessage.removeListener(portMessageListener)
       }
-      if (msg.session) {
-        if (msg.done) msg.session = { ...msg.session, isRetry: false }
-        setSession(msg.session)
-      }
-      if (msg.done) {
-        updateAnswer('', true, 'answer', true)
-        setIsReady(true)
-      }
-      if (msg.error) {
-        switch (msg.error) {
-          case 'UNAUTHORIZED':
-            updateAnswer(
-              `${t('UNAUTHORIZED')}<br>${t('Please login at https://chat.openai.com first')}${
-                isSafari() ? `<br>${t('Then open https://chat.openai.com/api/auth/session')}` : ''
-              }<br>${t('And refresh this page or type you question again')}` +
-                `<br><br>${t(
-                  'Consider creating an api key at https://platform.openai.com/account/api-keys',
-                )}`,
-              false,
-              'error',
-            )
-            break
-          case 'CLOUDFLARE':
-            updateAnswer(
-              `${t('OpenAI Security Check Required')}<br>${
-                isSafari()
-                  ? t('Please open https://chat.openai.com/api/auth/session')
-                  : t('Please open https://chat.openai.com')
-              }<br>${t('And refresh this page or type you question again')}` +
-                `<br><br>${t(
-                  'Consider creating an api key at https://platform.openai.com/account/api-keys',
-                )}`,
-              false,
-              'error',
-            )
-            break
-          default:
-            if (
-              conversationItemData[conversationItemData.length - 1].content.includes('gpt-loading')
-            )
-              updateAnswer(msg.error, false, 'error')
-            else
-              setConversationItemData([
-                ...conversationItemData,
-                new ConversationItemData('error', msg.error),
-              ])
-            break
-        }
-        setIsReady(true)
-      }
-    }
-    port.onMessage.addListener(listener)
-    return () => {
-      port.onMessage.removeListener(listener)
     }
   }, [conversationItemData])
 
-  const getRetryFn = (session) => () => {
+  const getRetryFn = (session) => async () => {
     updateAnswer(`<p class="gpt-loading">${t('Waiting for response...')}</p>`, false, 'answer')
     setIsReady(false)
 
@@ -215,6 +276,7 @@ function ConversationCard(props) {
       const lastRecord = session.conversationRecords[session.conversationRecords.length - 1]
       if (
         conversationItemData[conversationItemData.length - 1].done &&
+        conversationItemData.length > 1 &&
         lastRecord.question === conversationItemData[conversationItemData.length - 2].content
       ) {
         session.conversationRecords.pop()
@@ -223,12 +285,14 @@ function ConversationCard(props) {
     const newSession = { ...session, isRetry: true }
     setSession(newSession)
     try {
-      port.postMessage({ stop: true })
-      port.postMessage({ session: newSession })
+      await postMessage({ stop: true })
+      await postMessage({ session: newSession })
     } catch (e) {
       updateAnswer(e, false, 'error')
     }
   }
+
+  const retryFn = useMemo(() => getRetryFn(session), [session])
 
   return (
     <div className="gpt-inner">
@@ -348,8 +412,8 @@ function ConversationCard(props) {
           <DeleteButton
             size={16}
             text={t('Clear Conversation')}
-            onConfirm={() => {
-              port.postMessage({ stop: true })
+            onConfirm={async () => {
+              await postMessage({ stop: true })
               Browser.runtime.sendMessage({
                 type: 'DELETE_CONVERSATION',
                 data: {
@@ -438,18 +502,17 @@ function ConversationCard(props) {
             content={data.content}
             key={idx}
             type={data.type}
-            session={session}
-            done={data.done}
-            port={port}
-            onRetry={idx === conversationItemData.length - 1 ? getRetryFn(session) : null}
+            descName={data.type === 'answer' && session.aiName}
+            modelName={data.type === 'answer' && session.modelName}
+            onRetry={idx === conversationItemData.length - 1 ? retryFn : null}
           />
         ))}
       </div>
       <InputBox
         enabled={isReady}
-        port={port}
+        postMessage={postMessage}
         reverseResizeDir={props.pageMode}
-        onSubmit={(question) => {
+        onSubmit={async (question) => {
           const newQuestion = new ConversationItemData('question', question)
           const newAnswer = new ConversationItemData(
             'answer',
@@ -461,7 +524,7 @@ function ConversationCard(props) {
           const newSession = { ...session, question, isRetry: false }
           setSession(newSession)
           try {
-            port.postMessage({ session: newSession })
+            await postMessage({ session: newSession })
           } catch (e) {
             updateAnswer(e, false, 'error')
           }
@@ -473,7 +536,7 @@ function ConversationCard(props) {
 
 ConversationCard.propTypes = {
   session: PropTypes.object.isRequired,
-  question: PropTypes.string.isRequired,
+  question: PropTypes.string,
   onUpdate: PropTypes.func,
   draggable: PropTypes.bool,
   closeable: PropTypes.bool,

@@ -6,6 +6,7 @@ import { chatgptWebModelKeys, getUserConfig, Models } from '../../config/index.m
 import { pushRecord, setAbortController } from './shared.mjs'
 import Browser from 'webextension-polyfill'
 import { v4 as uuidv4 } from 'uuid'
+import { t } from 'i18next'
 
 async function request(token, method, path, data) {
   const apiUrl = (await getUserConfig()).customChatGptWebApiUrl
@@ -83,6 +84,35 @@ export async function generateAnswersWithChatgptWebApi(port, question, session, 
       })
       .join('; ')
 
+  if (!config.chatgptArkoseReqUrl)
+    throw new Error(
+      t('Please login at https://chat.openai.com first') +
+        '\n\n' +
+        t(
+          "Please keep https://chat.openai.com open and try again. If it still doesn't work, type some characters in the input box of chatgpt web page and try again.",
+        ),
+    )
+  const arkoseToken = await fetch(
+    config.chatgptArkoseReqUrl + '?' + config.chatgptArkoseReqParams,
+    {
+      method: 'POST',
+      body: config.chatgptArkoseReqForm,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      },
+    },
+  )
+    .then((resp) => resp.json())
+    .then((resp) => resp.token)
+    .catch(() => null)
+  if (!arkoseToken)
+    throw new Error(
+      t('Failed to get arkose token.') +
+        '\n\n' +
+        t(
+          "Please keep https://chat.openai.com open and try again. If it still doesn't work, type some characters in the input box of chatgpt web page and try again.",
+        ),
+    )
   let answer = ''
   await fetchSSE(`${config.customChatGptWebApiUrl}${config.customChatGptWebApiPath}`, {
     method: 'POST',
@@ -95,7 +125,7 @@ export async function generateAnswersWithChatgptWebApi(port, question, session, 
     },
     body: JSON.stringify({
       action: 'next',
-      conversation_id: session.conversationId,
+      conversation_id: session.conversationId || undefined,
       messages: [
         {
           id: session.messageId,
@@ -108,22 +138,21 @@ export async function generateAnswersWithChatgptWebApi(port, question, session, 
           },
         },
       ],
+      conversation_mode: {
+        kind: 'primary_assistant',
+      },
+      force_paragen: false,
+      force_rate_limit: false,
+      suggestions: [],
       model: usedModel,
       parent_message_id: session.parentMessageId,
       timezone_offset_min: new Date().getTimezoneOffset(),
-      variant_purpose: 'none',
       history_and_training_disabled: config.disableWebModeHistory,
-      arkose_token: usedModel.startsWith('gpt-4')
-        ? `${Array.from({ length: 17 }, () => Math.floor(Math.random() * 16).toString(16)).join(
-            '',
-          )}|r=ap-southeast-1|meta=3|meta_width=300|metabgclr=transparent|metaiconclr=%23555555|guitextcolor=%23000000|pk=35536E1E-65B4-4D96-9D97-6ADB7EFF8147|at=40|sup=1|rid=${
-            Math.floor(Math.random() * 99) + 1
-          }|ag=101|cdn_url=https%3A%2F%2Ftcr9i.chat.openai.com%2Fcdn%2Ffc|lurl=https%3A%2F%2Faudio-ap-southeast-1.arkoselabs.com|surl=https%3A%2F%2Ftcr9i.chat.openai.com|smurl=https%3A%2F%2Ftcr9i.chat.openai.com%2Fcdn%2Ffc%2Fassets%2Fstyle-manager`
-        : undefined,
+      arkose_token: arkoseToken,
     }),
     onMessage(message) {
       console.debug('sse message', message)
-      if (message === '[DONE]') {
+      if (message.trim() === '[DONE]') {
         pushRecord(session, question, answer)
         console.debug('conversation history', { content: session.conversationRecords })
         port.postMessage({ answer: null, done: true, session: session })
@@ -136,10 +165,19 @@ export async function generateAnswersWithChatgptWebApi(port, question, session, 
         console.debug('json error', error)
         return
       }
+      if (data.error) {
+        if (data.error.includes('unusual activity'))
+          throw new Error(
+            "Please keep https://chat.openai.com open and try again. If it still doesn't work, type some characters in the input box of chatgpt web page and try again.",
+          )
+        else throw new Error(data.error)
+      }
+
       if (data.conversation_id) session.conversationId = data.conversation_id
       if (data.message?.id) session.parentMessageId = data.message.id
 
-      answer = data.message?.content?.parts?.[0]
+      const respAns = data.message?.content?.parts?.[0]
+      if (respAns) answer = respAns
       if (answer) {
         port.postMessage({ answer: answer, done: false, session: null })
       }
@@ -148,6 +186,7 @@ export async function generateAnswersWithChatgptWebApi(port, question, session, 
       // sendModerations(accessToken, question, session.conversationId, session.messageId)
     },
     async onEnd() {
+      port.postMessage({ done: true })
       port.onMessage.removeListener(messageListener)
       port.onDisconnect.removeListener(disconnectListener)
     },

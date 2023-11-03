@@ -1,5 +1,5 @@
-import { pushRecord, setAbortController } from './shared.mjs'
 import { getUserConfig } from '../../config/index.mjs'
+import { pushRecord, setAbortController } from './shared.mjs'
 import { fetchSSE } from '../../utils/fetch-sse.mjs'
 import { isEmpty } from 'lodash-es'
 
@@ -8,40 +8,36 @@ import { isEmpty } from 'lodash-es'
  * @param {string} question
  * @param {Session} session
  */
-export async function generateAnswersWithWaylaidwandererApi(port, question, session) {
+export async function generateAnswersWithClaudeApi(port, question, session) {
   const { controller, messageListener, disconnectListener } = setAbortController(port)
-
   const config = await getUserConfig()
 
+  let prompt = ''
+  for (const record of session.conversationRecords.slice(-config.maxConversationContextLength)) {
+    prompt += '\n\nHuman: ' + record.question + '\n\nAssistant: ' + record.answer
+  }
+  prompt += `\n\nHuman: ${question}\n\nAssistant:`
+
   let answer = ''
-  await fetchSSE(config.githubThirdPartyUrl, {
+  await fetchSSE(`https://api.anthropic.com/v1/complete`, {
     method: 'POST',
     signal: controller.signal,
     headers: {
       'Content-Type': 'application/json',
+      accept: 'application/json',
+      'anthropic-version': '2023-06-01',
+      'x-api-key': config.claudeApiKey,
     },
     body: JSON.stringify({
-      message: question,
+      model: 'claude-2',
+      prompt: prompt,
       stream: true,
-      ...(session.bingWeb_encryptedConversationSignature && {
-        conversationId: session.bingWeb_conversationId,
-        encryptedConversationSignature: session.bingWeb_encryptedConversationSignature,
-        clientId: session.bingWeb_clientId,
-        invocationId: session.bingWeb_invocationId,
-      }),
-      ...(session.parentMessageId && {
-        conversationId: session.conversationId,
-        parentMessageId: session.parentMessageId,
-      }),
+      max_tokens_to_sample: config.maxResponseTokenLength,
+      temperature: config.temperature,
     }),
     onMessage(message) {
       console.debug('sse message', message)
-      if (message.trim() === '[DONE]') {
-        pushRecord(session, question, answer)
-        console.debug('conversation history', { content: session.conversationRecords })
-        port.postMessage({ answer: null, done: true, session: session })
-        return
-      }
+
       let data
       try {
         data = JSON.parse(message)
@@ -49,17 +45,22 @@ export async function generateAnswersWithWaylaidwandererApi(port, question, sess
         console.debug('json error', error)
         return
       }
+
+      // The Claude v2 API may send metadata fields, handle them here
       if (data.conversationId) session.conversationId = data.conversationId
       if (data.parentMessageId) session.parentMessageId = data.parentMessageId
-      if (data.encryptedConversationSignature)
-        session.bingWeb_encryptedConversationSignature = data.encryptedConversationSignature
-      if (data.conversationId) session.bingWeb_conversationId = data.conversationId
-      if (data.clientId) session.bingWeb_clientId = data.clientId
-      if (data.invocationId) session.bingWeb_invocationId = data.invocationId
 
-      if (typeof data === 'string') {
-        answer += data
+      // In Claude's case, the "completion" key holds the text
+      if (data.completion) {
+        answer += data.completion
         port.postMessage({ answer: answer, done: false, session: null })
+      }
+
+      // Check if the message indicates that Claude is done
+      if (data.stop_reason === 'stop_sequence') {
+        pushRecord(session, question, answer)
+        console.debug('conversation history', { content: session.conversationRecords })
+        port.postMessage({ answer: null, done: true, session: session })
       }
     },
     async onStart() {},

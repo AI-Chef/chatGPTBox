@@ -30,19 +30,24 @@ export const chatgptWebModelKeys = [
 ]
 export const bingWebModelKeys = ['bingFree4', 'bingFreeSydney']
 export const bardWebModelKeys = ['bardWebFree']
+export const claudeWebModelKeys = ['claude2WebFree']
 export const gptApiModelKeys = ['gptApiDavinci']
 export const chatgptApiModelKeys = [
   'chatgptApi35',
   'chatgptApi35_16k',
   'chatgptApi35_0613',
+  'chatgptApi35_16k_0613',
   'chatgptApi4_8k',
+  'chatgptApi4_8k_0613',
   'chatgptApi4_32k',
+  'chatgptApi4_32k_0613',
 ]
 export const customApiModelKeys = ['customModel']
 export const azureOpenAiApiModelKeys = ['azureOpenAi']
+export const claudeApiModelKeys = ['claude2Api']
 export const githubThirdPartyApiModelKeys = ['waylaidwandererApi']
 export const poeWebModelKeys = [
-  'poeAiWebSage',
+  'poeAiWebSage', //poe.com/Assistant
   'poeAiWebGPT4',
   'poeAiWebGPT4_32k',
   'poeAiWebClaudePlus',
@@ -52,6 +57,9 @@ export const poeWebModelKeys = [
   'poeAiWebChatGpt',
   'poeAiWebChatGpt_16k',
   'poeAiWebGooglePaLM',
+  'poeAiWeb_Llama_2_7b',
+  'poeAiWeb_Llama_2_13b',
+  'poeAiWeb_Llama_2_70b',
 ]
 
 /**
@@ -71,18 +79,29 @@ export const Models = {
   chatgptApi35: { value: 'gpt-3.5-turbo', desc: 'ChatGPT (GPT-3.5-turbo)' },
   chatgptApi35_16k: { value: 'gpt-3.5-turbo-16k', desc: 'ChatGPT (GPT-3.5-turbo-16k)' },
   chatgptApi35_0613: { value: 'gpt-3.5-turbo-0613', desc: 'ChatGPT (GPT-3.5-turbo 0613)' },
+  chatgptApi35_16k_0613: {
+    value: 'gpt-3.5-turbo-16k-0613',
+    desc: 'ChatGPT (GPT-3.5-turbo-16k 0613)',
+  },
+  claude2WebFree: { value: 'claude-2', desc: 'Claude.ai (Web, Claude 2)' },
+  claude2Api: { value: '', desc: 'Claude.ai (API, Claude 2)' },
   bingFree4: { value: '', desc: 'Bing (Web, GPT-4)' },
   bingFreeSydney: { value: '', desc: 'Bing (Web, GPT-4, Sydney)' },
   bardWebFree: { value: '', desc: 'Bard (Web)' },
-  poeAiWebSage: { value: 'sage', desc: 'Poe AI (Web, Sage)' },
+  poeAiWebSage: { value: 'Assistant', desc: 'Poe AI (Web, Assistant)' },
   poeAiWebGPT4: { value: 'gpt-4', desc: 'Poe AI (Web, GPT-4)' },
   poeAiWebGPT4_32k: { value: 'gpt-4-32k', desc: 'Poe AI (Web, GPT-4-32k)' },
   poeAiWebClaudePlus: { value: 'claude-2-100k', desc: 'Poe AI (Web, Claude 2 100k)' },
   poeAiWebClaude: { value: 'claude-instant', desc: 'Poe AI (Web, Claude instant)' },
   poeAiWebClaude100k: { value: 'claude-instant-100k', desc: 'Poe AI (Web, Claude instant 100k)' },
   poeAiWebGooglePaLM: { value: 'Google-PaLM', desc: 'Poe AI (Web, Google-PaLM)' },
+  poeAiWeb_Llama_2_7b: { value: 'Llama-2-7b', desc: 'Poe AI (Web, Llama-2-7b)' },
+  poeAiWeb_Llama_2_13b: { value: 'Llama-2-13b', desc: 'Poe AI (Web, Llama-2-13b)' },
+  poeAiWeb_Llama_2_70b: { value: 'Llama-2-70b', desc: 'Poe AI (Web, Llama-2-70b)' },
   chatgptApi4_8k: { value: 'gpt-4', desc: 'ChatGPT (GPT-4-8k)' },
+  chatgptApi4_8k_0613: { value: 'gpt-4', desc: 'ChatGPT (GPT-4-8k 0613)' },
   chatgptApi4_32k: { value: 'gpt-4-32k', desc: 'ChatGPT (GPT-4-32k)' },
+  chatgptApi4_32k_0613: { value: 'gpt-4-32k', desc: 'ChatGPT (GPT-4-32k 0613)' },
   gptApiDavinci: { value: 'text-davinci-003', desc: 'GPT-3.5' },
   customModel: { value: '', desc: 'Custom Model' },
   azureOpenAi: { value: '', desc: 'ChatGPT (Azure)' },
@@ -132,6 +151,7 @@ export const defaultConfig = {
 
   poeCustomBotName: '',
 
+  claudeApiKey: '',
   /** @type {keyof ModelMode}*/
   modelMode: 'balanced',
 
@@ -158,23 +178,25 @@ export const defaultConfig = {
 
   alwaysCreateNewConversationWindow: false,
   activeApiModes: [
+    // 'claude2Api',
     'chatgptFree35',
     'chatgptFree35Mobile',
-    'chatgptPlus4',
-    'chatgptPlus4Mobile',
+    // 'chatgptPlus4',
+    // 'chatgptPlus4Mobile',
     'chatgptApi35',
     'chatgptApi35_16k',
+    'claude2WebFree',
     'bingFree4',
     'bingFreeSydney',
-    'poeAiWebSage',
-    'poeAiWebGPT4',
-    'poeAiWebGPT4_32k',
-    'poeAiWebClaudePlus',
-    'poeAiWebClaude100k',
+    // 'poeAiWebSage', //poe.com/Assistant
+    // 'poeAiWebGPT4',
+    // 'poeAiWebGPT4_32k',
+    // 'poeAiWebClaudePlus',
+    // 'poeAiWebClaude100k',
     'chatgptApi4_8k',
     'customModel',
     'azureOpenAi',
-    'poeAiWebCustom',
+    // 'poeAiWebCustom',
   ],
   activeSelectionTools: ['translate', 'summary', 'polish', 'code', 'ask'],
   activeSiteAdapters: [
@@ -188,17 +210,23 @@ export const defaultConfig = {
     'stackoverflow',
     'juejin',
     'mp.weixin.qq',
+    'followin',
   ],
   accessToken: '',
   tokenSavedOn: 0,
+  bingAccessToken: '',
   chatgptJumpBackTabId: 0,
   chatgptTabId: 0,
+  chatgptArkoseReqUrl: '',
+  chatgptArkoseReqForm: '',
 
   // unchangeable
 
   userLanguage: getNavigatorLanguage(),
   apiModes: Object.keys(Models),
+  chatgptArkoseReqParams: 'cgb=vhwi',
   selectionTools: [
+    'explain',
     'translate',
     'translateToEn',
     'translateToZh',
@@ -211,6 +239,7 @@ export const defaultConfig = {
     'ask',
   ],
   selectionToolsDesc: [
+    'Explain',
     'Translate',
     'Translate (To English)',
     'Translate (Bidirectional)',
@@ -233,6 +262,7 @@ export const defaultConfig = {
     'stackoverflow',
     'juejin',
     'mp.weixin.qq',
+    'followin',
   ],
 }
 
@@ -265,6 +295,9 @@ export function isUsingAzureOpenAi(configOrSession) {
   return azureOpenAiApiModelKeys.includes(configOrSession.modelName)
 }
 
+export function isUsingClaude2Api(configOrSession) {
+  return claudeApiModelKeys.includes(configOrSession.modelName)
+}
 export function isUsingGithubThirdPartyApi(configOrSession) {
   return githubThirdPartyApiModelKeys.includes(configOrSession.modelName)
 }

@@ -1,7 +1,7 @@
 {
   "name": "ChatGPTBox",
   "description": "Integrating ChatGPT into your browser deeply, everything you need is here",
-  "version": "2.4.0",
+  "version": "2.4.4",
   "manifest_version": 3,
   "icons": {
     "16": "logo.png",
@@ -10,18 +10,21 @@
     "128": "logo.png"
   },
   "host_permissions": [
-    "https://*.openai.com/",
-    "https://*.bing.com/",
-    "https://*.poe.com/",
-    "https://*.google.com/"
+    "https://*.openai.com/*",
+    "https://*.bing.com/*",
+    "https://*.poe.com/*",
+    "https://*.google.com/*",
+    "https://claude.ai/*",
+    "<all_urls>"
   ],
   "permissions": [
-    "commands",
     "cookies",
     "storage",
     "contextMenus",
     "unlimitedStorage",
-    "tabs"
+    "tabs",
+    "webRequest",
+    "declarativeNetRequestWithHostAccess"
   ],
   "optional_permissions": [
     "background"
@@ -31,6 +34,15 @@
   },
   "action": {
     "default_popup": "popup.html"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
   },
   "options_ui": {
     "page": "popup.html",
